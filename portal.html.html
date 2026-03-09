@@ -1,0 +1,1076 @@
+<!DOCTYPE html><html lang="es"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="theme-color" content="#0a1628"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Mi Furgón"/>
+<link id="pwa-manifest" rel="manifest" href="/manifest-portal.json"/>
+<link rel="icon" href="/icon-192.jpg"/>
+<link rel="apple-touch-icon" href="/icon-512.jpg"/>
+<title>Portal Apoderado · RutaEscolar</title>
+<script>
+/* ═══════════════════════════════════════════════════════
+   MANIFEST DINÁMICO — CRÍTICO para PWA con código apoderado
+   ─ Android Chrome: genera blob manifest con ?p=CODIGO
+   ─ iOS Safari: guarda en localStorage, lee al abrir PWA
+   ─ Ambos sistemas garantizan que la PWA instalada abre
+     portal.html con el código correcto, nunca index.html
+   ═══════════════════════════════════════════════════════ */
+(function(){
+  var url=window.location.href;
+  var pc=new URLSearchParams(window.location.search).get("p");
+  
+  /* SIEMPRE guardar el código en localStorage cuando viene en URL */
+  if(pc){
+    try{localStorage.setItem("ruta_pc",pc);}catch(e){}
+  }
+
+  /* Generar manifest dinámico con start_url que incluye ?p=CODIGO */
+  /* Esto hace que Android Chrome instale la PWA con el código correcto */
+  var startUrl="/portal.html"+(pc?"?p="+pc:"");
+  var manifest={
+    name:"Mi Furgón · RutaEscolar",
+    short_name:"Mi Furgón",
+    description:"Portal de transporte escolar para apoderados",
+    start_url:startUrl,
+    scope:"/",
+    display:"standalone",
+    orientation:"portrait",
+    background_color:"#0a1628",
+    theme_color:"#0a1628",
+    icons:[
+      {src:"/icon-192.jpg",sizes:"192x192",type:"image/jpeg",purpose:"any maskable"},
+      {src:"/icon-512.jpg",sizes:"512x512",type:"image/jpeg",purpose:"any maskable"}
+    ]
+  };
+  try{
+    var blob=new Blob([JSON.stringify(manifest)],{type:"application/json"});
+    var blobUrl=URL.createObjectURL(blob);
+    document.getElementById("pwa-manifest").href=blobUrl;
+  }catch(e){}
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --ny:#0a1628;--n2:#0f1a30;--n3:#1a2f52;
+  --yw:#f5c518;--gn:#22c55e;--rd:#ef4444;--or:#f97316;--bl:#3b82f6;--pp:#a855f7;
+  --gy:#94a3b8;--lt:#e2e8f0;--cd:#121e36;--bd:#1a2d4d
+}
+html,body{overscroll-behavior:none;overflow:hidden;height:100%;
+  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;
+  background:var(--ny);color:var(--lt)}
+input,select,textarea,button{font-family:inherit;font-size:16px}
+.scr{overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.scr::-webkit-scrollbar{display:none}
+.b{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  border-radius:12px;font-weight:700;border:none;cursor:pointer;
+  transition:transform .15s;-webkit-user-select:none;user-select:none}
+.b:active{transform:scale(.96)}
+.by{background:var(--yw);color:var(--ny)}
+.i{width:100%;border-radius:10px;background:var(--n3);border:1.5px solid var(--bd);
+  color:var(--lt);padding:12px;outline:none;transition:border-color .2s;font-size:16px!important}
+.i:focus{border-color:var(--yw)}
+.i::placeholder{color:#4a5a6a}
+.lbl{display:block;font-size:10px;font-weight:700;color:var(--gy);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:16px;font-size:14px;font-weight:700;color:#fff;z-index:99999;pointer-events:none;transition:opacity .3s,bottom .3s;white-space:nowrap;max-width:88vw;text-align:center}
+.toast.sh{opacity:1;bottom:30px}.toast.hd{opacity:0;bottom:0px}
+/* Modal sheet */
+.mo-overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);z-index:9000}
+.mo-sheet{position:fixed;bottom:0;left:0;right:0;max-height:92vh;display:flex;flex-direction:column;border-radius:20px 20px 0 0;border-top:2.5px solid var(--pp);background:var(--n2);z-index:9001;animation:slideUp .26s cubic-bezier(.32,.72,0,1)}
+.mo-head{display:flex;align-items:center;justify-content:space-between;padding:18px 16px 10px;flex-shrink:0}
+.mo-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 16px 12px}
+.mo-foot{flex-shrink:0;display:flex;gap:8px;padding:12px 16px;padding-bottom:max(22px,env(safe-area-inset-bottom,22px));border-top:1.5px solid var(--bd);background:var(--n2);position:sticky;bottom:0}
+@keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
+/* GPS */
+.leaflet-container{background:#0a1628}
+.gps-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(10,22,40,.92);border:1.5px solid var(--gy);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700;color:var(--gy);white-space:nowrap;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.gps-pill.active{border-color:var(--gn);color:var(--gn);animation:gpsPulse 1.8s ease infinite}
+.gps-pill.recent{border-color:var(--or);color:var(--or)}
+@keyframes gpsPulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.4)}60%{box-shadow:0 0 0 8px rgba(34,197,94,0)}}
+.dot-live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gn);flex-shrink:0;animation:dotPulse 1.2s ease infinite}
+@keyframes dotPulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}50%{box-shadow:0 0 0 6px rgba(34,197,94,0)}}
+/* Alert popup */
+.alert-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.alert-box{background:var(--n2);border-radius:28px;padding:36px 28px 28px;text-align:center;max-width:340px;width:100%;border:2.5px solid var(--or);box-shadow:0 0 80px rgba(249,115,22,.3)}
+.alert-box.green{border-color:var(--gn);box-shadow:0 0 80px rgba(34,197,94,.25)}
+.alert-icon{font-size:72px;display:block;margin-bottom:20px;animation:iconBounce .5s ease}
+@keyframes iconBounce{0%,100%{transform:scale(1)}40%{transform:scale(1.25)}70%{transform:scale(.97)}}
+.alert-box h2{font-size:23px;font-weight:800;margin-bottom:12px}
+.alert-box p{color:var(--gy);font-size:14px;margin-bottom:28px;line-height:1.6}
+/* Audio banner */
+.audio-banner{position:fixed;top:0;left:0;right:0;z-index:99997;
+  padding:14px 20px;padding-top:calc(14px + env(safe-area-inset-top,0px));
+  display:flex;align-items:center;gap:12px;cursor:pointer;
+  background:linear-gradient(90deg,#7c3aed,#a855f7);
+  box-shadow:0 4px 20px rgba(0,0,0,.5)}
+@keyframes bellRing{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(18deg)}40%,80%{transform:rotate(-14deg)}}
+/* Notif items */
+.nf-item{display:flex;align-items:flex-start;gap:10px;padding:12px;border-radius:12px;background:var(--cd);border:1px solid var(--bd);margin-bottom:8px;transition:border-color .2s}
+.nf-item.new{border-color:var(--or);background:rgba(249,115,22,.06);animation:nfBlink 1s ease 3}
+@keyframes nfBlink{0%,100%{box-shadow:none}50%{box-shadow:0 0 14px rgba(249,115,22,.5)}}
+</style></head>
+<body>
+<div id="root"></div>
+<div id="modal-portal"></div>
+<script>
+"use strict";
+var h=React.createElement,us=React.useState,ue=React.useEffect,ur=React.useRef,uc=React.useCallback;
+var PORTAL=document.getElementById("modal-portal");
+function Modal(p){return ReactDOM.createPortal(p.children,PORTAL)}
+
+/* ═══════════════════════════════════════════════
+   📍 CÓDIGO DEL APODERADO
+   Lee desde URL (?p=) o localStorage (PWA sin URL)
+   ═══════════════════════════════════════════════ */
+var PC=(function(){
+  var fromUrl=new URLSearchParams(window.location.search).get("p");
+  if(fromUrl){try{localStorage.setItem("ruta_pc",fromUrl)}catch(e){}return fromUrl;}
+  try{return localStorage.getItem("ruta_pc")||null}catch(e){return null}
+})();
+
+/* ═══════════════════════════════════════════════
+   🔊 SISTEMA DE AUDIO
+   Auto-activación a los 2s + click simulado
+   iOS/Android: pool de Audio + WebAudio API
+   ═══════════════════════════════════════════════ */
+window._audioOK=false;
+window._audioCtx=null;
+window._soundPool={};
+window._soundURIs={};
+
+/* Generar tonos WAV en base64 */
+function _mkWav(notas,durSec){
+  var sr=22050,len=Math.ceil(sr*(durSec||0.9)),buf=new Float32Array(len);
+  notas.forEach(function(n){
+    var freq=n[0],startS=Math.floor(n[1]*sr),dur=Math.floor(0.17*sr);
+    for(var i=0;i<dur&&(startS+i)<len;i++){
+      var t=i/sr,env=i<dur*0.08?i/(dur*0.08):i>dur*0.65?1-(i-dur*0.65)/(dur*0.35):1;
+      buf[startS+i]+=Math.sin(2*Math.PI*freq*t)*0.45*env;
+    }
+  });
+  for(var i=0;i<len;i++)buf[i]=Math.max(-1,Math.min(1,buf[i]));
+  var hdrSz=44,dataSz=len*2,wavSz=hdrSz+dataSz,ab=new ArrayBuffer(wavSz),v=new DataView(ab);
+  function ws(o,s){for(var j=0;j<s.length;j++)v.setUint8(o+j,s.charCodeAt(j))}
+  ws(0,"RIFF");v.setUint32(4,wavSz-8,true);ws(8,"WAVE");ws(12,"fmt ");
+  v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);
+  v.setUint16(34,16,true);ws(36,"data");v.setUint32(40,dataSz,true);
+  for(var i=0;i<len;i++)v.setInt16(hdrSz+i*2,Math.floor(buf[i]*32767),true);
+  var bytes=new Uint8Array(ab),bin="";
+  for(var i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
+  return "data:audio/wav;base64,"+btoa(bin);
+}
+var _MELS={
+  en_camino:  {n:[[440,0],[523,0.18],[440,0.34],[587,0.50],[440,0.66]],d:0.9},
+  en_puerta:  {n:[[523,0],[659,0.14],[784,0.28],[659,0.42],[880,0.56]],d:0.8},
+  entregado:  {n:[[523,0],[659,0.14],[784,0.26],[1047,0.38]],d:0.6},
+  ausencia_hoy:{n:[[400,0],[330,0.20],[400,0.40]],d:0.6},
+  cancelar_ausencia:{n:[[440,0],[523,0.14],[659,0.28]],d:0.5},
+  confirm:    {n:[[880,0],[1100,0.1]],d:0.25}
+};
+(function(){Object.keys(_MELS).forEach(function(k){window._soundURIs[k]=_mkWav(_MELS[k].n,_MELS[k].d)})})();
+
+function _desbloquearAudio(){
+  if(window._audioOK)return true;
+  try{
+    Object.keys(window._soundURIs).forEach(function(k){
+      var a=new Audio(window._soundURIs[k]);a.preload="auto";a.volume=0.001;
+      /* Intentar play silencioso para desbloquear */
+      var p=a.play();if(p&&p.then)p.then(function(){a.pause()}).catch(function(){});
+      a.load();window._soundPool[k]=a;
+    });
+    var C=window.AudioContext||window.webkitAudioContext;
+    if(C){
+      window._audioCtx=new C();
+      if(window._audioCtx.state==="suspended")window._audioCtx.resume();
+      var b=window._audioCtx.createBuffer(1,1,22050),s=window._audioCtx.createBufferSource();
+      s.buffer=b;s.connect(window._audioCtx.destination);s.start(0);
+    }
+    window._audioOK=true;return true;
+  }catch(e){return false}
+}
+
+/* Auto-desbloquear en cualquier interacción */
+function _autoUnlock(){
+  if(window._audioOK)return;
+  _desbloquearAudio();
+  if(window._audioOK){
+    document.removeEventListener("touchstart",_autoUnlock,true);
+    document.removeEventListener("touchend",_autoUnlock,true);
+    document.removeEventListener("click",_autoUnlock,true);
+    document.removeEventListener("pointerdown",_autoUnlock,true);
+  }
+}
+document.addEventListener("touchstart",_autoUnlock,{capture:true,passive:true});
+document.addEventListener("touchend",_autoUnlock,{capture:true,passive:true});
+document.addEventListener("click",_autoUnlock,{capture:true,passive:true});
+document.addEventListener("pointerdown",_autoUnlock,{capture:true,passive:true});
+
+/* AUTO-ACTIVAR a los 2 segundos simulando interacción programática */
+setTimeout(function(){
+  if(window._audioOK)return;
+  /* Simular evento de click para desbloquear el contexto de audio */
+  try{
+    var evt=new MouseEvent("click",{bubbles:true,cancelable:true,view:window});
+    document.body.dispatchEvent(evt);
+  }catch(e){}
+  /* Intentar directamente igual */
+  _desbloquearAudio();
+  /* También pedir permiso de notificaciones */
+  _pedirPermisoNotif();
+},2000);
+
+/* Volver a intentar cada vez que el usuario toca la pantalla */
+document.addEventListener("touchstart",function onFirstTouch(){
+  _desbloquearAudio();
+  _pedirPermisoNotif();
+  document.removeEventListener("touchstart",onFirstTouch);
+},{once:true,passive:true});
+
+function playHorn(tipo){
+  tipo=tipo||"en_camino";
+  try{if(navigator.vibrate){
+    var vib={en_puerta:[300,100,300,100,500],entregado:[150,80,150,80,400]};
+    navigator.vibrate(vib[tipo]||[200,80,200]);
+  }}catch(e){}
+  var uri=window._soundURIs[tipo]||window._soundURIs.en_camino;
+  /* 1. AudioContext primero (funciona tras unlock sin nuevo gesto) */
+  if(window._audioCtx&&window._audioOK){
+    try{
+      var ctx=window._audioCtx;
+      function tocar(){
+        var mel=(_MELS[tipo]||_MELS.en_camino).n,now=ctx.currentTime;
+        mel.forEach(function(n){
+          var osc=ctx.createOscillator(),gn=ctx.createGain();
+          osc.type="triangle";osc.frequency.value=n[0];
+          gn.gain.setValueAtTime(0,now+n[1]);
+          gn.gain.linearRampToValueAtTime(0.45,now+n[1]+0.02);
+          gn.gain.setValueAtTime(0.45,now+n[1]+0.10);
+          gn.gain.linearRampToValueAtTime(0,now+n[1]+0.17);
+          osc.connect(gn);gn.connect(ctx.destination);
+          osc.start(now+n[1]);osc.stop(now+n[1]+0.22);
+        });
+      }
+      if(ctx.state==="suspended")ctx.resume().then(tocar);else tocar();
+    }catch(e){}
+  }
+  /* 2. Pool pre-cargada como respaldo */
+  var pa=window._soundPool[tipo];
+  if(pa){try{pa.currentTime=0;pa.volume=0.9;var p2=pa.play();if(p2&&p2.catch)p2.catch(function(){})}catch(e){}}
+  /* 3. new Audio() como último recurso */
+  try{var a=new Audio(uri);a.volume=0.9;var p=a.play();if(p&&p.catch)p.catch(function(){})}catch(e){}
+}
+
+/* Banner de audio — se muestra si no está desbloqueado */
+function AudioBanner(){
+  var _vis=us(!window._audioOK),vis=_vis[0],sVis=_vis[1];
+  ue(function(){
+    if(window._audioOK){sVis(false);return;}
+    var iv=setInterval(function(){if(window._audioOK)sVis(false);},500);
+    return function(){clearInterval(iv);};
+  },[]);
+  if(!vis)return null;
+  function activar(e){
+    e&&e.preventDefault&&e.preventDefault();
+    _desbloquearAudio();
+    _pedirPermisoNotif();
+    sVis(false);
+    playHorn("confirm");
+  }
+  return h("div",{id:"audio-banner-el",
+    onClick:activar,onTouchEnd:activar,
+    className:"audio-banner"},
+    h("span",{style:{fontSize:30,animation:"bellRing 0.7s ease infinite"}},"🔔"),
+    h("div",{style:{flex:1}},
+      h("div",{style:{fontSize:15,fontWeight:800,color:"#fff"}},"Toca aquí para activar alertas de sonido"),
+      h("div",{style:{fontSize:11,color:"rgba(255,255,255,.85)",marginTop:2}},"Necesario para recibir avisos del furgón")),
+    h("div",{style:{fontSize:11,fontWeight:700,color:"#fff",background:"rgba(255,255,255,.2)",borderRadius:8,padding:"6px 10px"}},"ACTIVAR"));
+}
+
+/* ═══════════════════════════════════════════════
+   📲 NOTIFICACIONES — SW + Notification API
+   ═══════════════════════════════════════════════ */
+window._notifPermiso=false;
+window._swReg=null;
+
+function _pedirPermisoNotif(){
+  if(!("Notification" in window))return;
+  if(Notification.permission==="granted"){window._notifPermiso=true;return;}
+  if(Notification.permission!=="denied"){
+    Notification.requestPermission().then(function(p){
+      if(p==="granted")window._notifPermiso=true;
+    });
+  }
+}
+
+function _enviarNotif(titulo,cuerpo,url){
+  var targetUrl=url||window.location.href;
+  var opts={body:cuerpo||"",icon:"/icon-192.jpg",badge:"/icon-192.jpg",
+    tag:"ruta-"+Date.now(),renotify:true,requireInteraction:true,
+    vibrate:[300,100,300,100,500],data:{url:targetUrl}};
+  try{
+    /* Método 1: SW postMessage (funciona background Android + iOS PWA instalada) */
+    var reg=window._swReg;
+    if(reg){
+      var sw=reg.active||reg.waiting||reg.installing;
+      if(sw){
+        sw.postMessage({type:"SHOW_NOTIF",title:titulo,body:cuerpo,url:targetUrl});
+        /* También intentar showNotification directo por si acaso */
+        if(sw.state==="activated"){
+          try{reg.showNotification(titulo,opts);}catch(e2){}
+        }
+        return;
+      }
+    }
+    /* Método 2: serviceWorker.controller */
+    if(navigator.serviceWorker&&navigator.serviceWorker.controller){
+      navigator.serviceWorker.controller.postMessage(
+        {type:"SHOW_NOTIF",title:titulo,body:cuerpo,url:targetUrl});
+      return;
+    }
+    /* Método 3: serviceWorker.ready */
+    if(navigator.serviceWorker){
+      navigator.serviceWorker.ready.then(function(r){
+        if(r.active)r.active.postMessage({type:"SHOW_NOTIF",title:titulo,body:cuerpo,url:targetUrl});
+        r.showNotification(titulo,opts);
+      }).catch(function(){});
+      return;
+    }
+    /* Método 4: Notification directa (solo con app abierta) */
+    if(Notification.permission==="granted"){
+      var n=new Notification(titulo,opts);
+      setTimeout(function(){n.close();},20000);
+      n.onclick=function(){window.focus();n.close();};
+    }
+  }catch(e){}
+}
+
+function _mostrarNotifNativa(titulo,cuerpo,url){
+  if(!("Notification" in window)){_enviarNotif(titulo,cuerpo,url);return;}
+  if(Notification.permission==="granted"){_enviarNotif(titulo,cuerpo,url);return;}
+  if(Notification.permission!=="denied"){
+    Notification.requestPermission().then(function(p){
+      if(p==="granted"){window._notifPermiso=true;_enviarNotif(titulo,cuerpo,url);}
+    });
+  }else{
+    /* Sin permiso, igual intentar por SW (puede funcionar si SW tiene permiso previo) */
+    _enviarNotif(titulo,cuerpo,url);
+  }
+}
+
+function _notifTexto(nf){
+  var cfg={
+    en_camino:  {t:"🚐 ¡Furgón en camino!",b:nf.message||"El furgón viene en camino"},
+    en_puerta:  {t:"🏠 ¡Furgón en tu puerta!",b:nf.message||"Sal ahora, el furgón espera"},
+    entregado:  {t:"✅ Entregado",b:nf.message||"Tu hijo llegó al destino"},
+    ausencia_hoy:{t:"📅 Ausencia registrada",b:nf.message||"Ausencia para hoy registrada"},
+    cancelar_ausencia:{t:"✔️ Ausencia cancelada",b:nf.message||"Vuelve a asistir"},
+    pago_confirmado:{t:"💰 Pago confirmado",b:nf.message||"Pago registrado"}
+  };
+  return cfg[nf.ntype]||{t:"🔔 Aviso del furgón",b:nf.message||nf.ntype};
+}
+
+/* ═══════════════════════════════════════════════
+   ⏱️ WORKER TIMER — no se congela en background
+   ═══════════════════════════════════════════════ */
+var _wtCode='var ts={};self.onmessage=function(e){var d=e.data;if(d.cmd==="start"){if(ts[d.id])clearInterval(ts[d.id]);ts[d.id]=setInterval(function(){self.postMessage({id:d.id})},d.ms)}if(d.cmd==="stop"){if(ts[d.id]){clearInterval(ts[d.id]);delete ts[d.id]}}};';
+var _wt=null,_wcb={},_wci=0;
+try{_wt=new Worker(URL.createObjectURL(new Blob([_wtCode],{type:"application/javascript"})));_wt.onmessage=function(e){var cb=_wcb[e.data.id];if(cb)try{cb()}catch(err){}}}catch(e){}
+function wSet(fn,ms){var id=++_wci;if(_wt){_wcb[id]=fn;_wt.postMessage({cmd:"start",id:id,ms:ms});}else{var nid=setInterval(fn,ms);_wcb[id]={n:nid};}return id;}
+function wClr(id){if(_wt){_wt.postMessage({cmd:"stop",id:id});delete _wcb[id];}else{var r=_wcb[id];if(r&&r.n)clearInterval(r.n);delete _wcb[id];}}
+
+window._onVisibleCbs=[];
+document.addEventListener("visibilitychange",function(){
+  if(!document.hidden)window._onVisibleCbs.forEach(function(f){try{f()}catch(e){}});
+});
+
+/* ═══════════════════════════════════════════════
+   🔔 ALERT POPUP
+   ═══════════════════════════════════════════════ */
+function AlertPopup(p){
+  var al=p.alert,onClose=p.onClose;
+  if(!al)return null;
+  var cfg={
+    en_camino: {icon:"🚐",title:"¡Furgón en camino!",color:"var(--or)",green:false},
+    en_puerta: {icon:"🏠",title:"¡Furgón en tu puerta!",color:"var(--gn)",green:true},
+    entregado: {icon:"✅",title:"¡Entregado!",color:"var(--gn)",green:true},
+    ausencia_hoy:{icon:"📅",title:"Ausencia registrada",color:"var(--pp)",green:false},
+    cancelar_ausencia:{icon:"✔️",title:"Ausencia cancelada",color:"var(--gn)",green:true}
+  };
+  var c=cfg[al.ntype]||{icon:"🔔",title:"Aviso del furgón",color:"var(--bl)",green:false};
+  var ts=al.created_at?new Date(al.created_at).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"}):"";
+  return h("div",{className:"alert-overlay",onClick:onClose},
+    h("div",{className:"alert-box"+(c.green?" green":""),onClick:function(e){e.stopPropagation()}},
+      h("span",{className:"alert-icon"},c.icon),
+      h("h2",{style:{color:c.color}},c.title),
+      h("p",null,(al.message||al.ntype)+(ts?" · "+ts:"")),
+      h("button",{style:{width:"100%",padding:16,borderRadius:14,border:"none",
+        fontSize:16,fontWeight:800,cursor:"pointer",minHeight:52,
+        background:c.color,color:c.green?"#fff":"var(--ny)"},
+        onClick:onClose},"Entendido ✓")));
+}
+
+/* ═══════════════════════════════════════════════
+   📡 SUPABASE
+   ═══════════════════════════════════════════════ */
+var SB_URL="https://bgggeojxkguvvkmccwpg.supabase.co";
+var SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnZ2dlb2p4a2d1dnZrbWNjd3BnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5ODY5ODcsImV4cCI6MjA4ODU2Mjk4N30.QyzkVLPaZyWNVre6v5eA9yaZkkRJ0mIkf5aIeasFvJk";
+var sb=window.supabase.createClient(SB_URL,SB_KEY);
+var QS=["Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+function td(){return new Date().toISOString().slice(0,10)}
+
+/* ═══════════════════════════════════════════════
+   🎨 ICONO SVG
+   ═══════════════════════════════════════════════ */
+function I(p){
+  var n=p.name,s=p.size||20,c=p.color||"currentColor";
+  var a={xmlns:"http://www.w3.org/2000/svg",width:s,height:s,viewBox:"0 0 24 24",fill:"none",stroke:c,strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"};
+  var d={truck:"M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2M15 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 13.52 8H14",check:"M20 6 9 17l-5-5",calx:"M8 2v4M16 2v4M3 10h18M14 14l-4 4M10 14l4 4",bell:"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0",home:"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"};
+  var ex={truck:[["circle",{cx:17,cy:18,r:2}],["circle",{cx:7,cy:18,r:2}]],calx:[["rect",{width:18,height:18,x:3,y:4,rx:2}]]};
+  var parts=(d[n]||"M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z").split("M").filter(Boolean).map(function(x,i){return h("path",{d:"M"+x,key:i})});
+  var extras=(ex[n]||[]).map(function(e,i){return h(e[0],Object.assign({key:"x"+i},e[1]))});
+  return h("svg",a,extras.concat(parts));
+}
+
+/* ═══════════════════════════════════════════════
+   📊 DATA HOOK
+   ═══════════════════════════════════════════════ */
+function useData(){
+  var _sc=us([]),sc=_sc[0],sSc=_sc[1];
+  var _st=us([]),sts=_st[0],sSts=_st[1];
+  var _ds=us([]),ds=_ds[0],sDs=_ds[1];
+  var _nf=us([]),nf=_nf[0],sNf=_nf[1];
+  var _sa=us([]),sa=_sa[0],sSa=_sa[1];
+  var _py=us([]),py=_py[0],sPy=_py[1];
+  var _ld=us(true),ld=_ld[0],sLd=_ld[1];
+  var _er=us(null),er=_er[0],sEr=_er[1];
+
+  function rl(){
+    sb.from("schools").select("*").then(function(r){if(r.data&&!r.error)sSc(r.data)});
+    sb.from("students").select("*").order("name").then(function(r){if(r.data&&!r.error)sSts(r.data)});
+    sb.from("daily_state").select("*").eq("route_date",td()).then(function(r){if(r.data&&!r.error)sDs(r.data)});
+    sb.from("notifications").select("*").order("created_at",{ascending:false}).limit(50).then(function(r){if(r.data&&!r.error)sNf(r.data)});
+    sb.from("scheduled_absences").select("*").gte("absence_date",td()).then(function(r){if(r.data&&!r.error)sSa(r.data)});
+    sb.from("payments").select("*").eq("year",new Date().getFullYear()).then(function(r){if(r.data&&!r.error)sPy(r.data)});
+  }
+
+  ue(function(){
+    var live=true;
+    Promise.all([
+      sb.from("schools").select("*"),
+      sb.from("students").select("*").order("name"),
+      sb.from("daily_state").select("*").eq("route_date",td()),
+      sb.from("notifications").select("*").order("created_at",{ascending:false}).limit(50),
+      sb.from("scheduled_absences").select("*").gte("absence_date",td()),
+      sb.from("payments").select("*").eq("year",new Date().getFullYear())
+    ]).then(function(r){
+      if(!live)return;
+      var err=r.find(function(x){return x.error});
+      if(err){sEr(err.error.message||"Error BD");sLd(false);return;}
+      sSc(r[0].data||[]);sSts(r[1].data||[]);sDs(r[2].data||[]);
+      sNf(r[3].data||[]);sSa(r[4].data||[]);sPy(r[5].data||[]);
+      sLd(false);
+    }).catch(function(e){if(live){sEr(e.message);sLd(false);}});
+
+    /* Realtime: escuchar cambios en BD */
+    var ch=sb.channel("portal-rt-"+Date.now())
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications"},function(ev){
+        sNf(function(prev){return[ev.new].concat(prev)});
+        if(typeof window._showAlert==="function")window._showAlert(ev.new);
+      })
+      .on("postgres_changes",{event:"*",schema:"public",table:"daily_state"},function(ev){
+        sDs(function(prev){
+          if(ev.eventType==="INSERT")return prev.concat([ev.new]);
+          if(ev.eventType==="UPDATE")return prev.map(function(r){return r.id===ev.new.id?ev.new:r});
+          if(ev.eventType==="DELETE")return prev.filter(function(r){return r.id!==ev.old.id});
+          return prev;
+        });
+      })
+      .on("postgres_changes",{event:"*",schema:"public",table:"scheduled_absences"},function(ev){
+        sSa(function(prev){
+          if(ev.eventType==="INSERT")return prev.concat([ev.new]);
+          if(ev.eventType==="DELETE")return prev.filter(function(r){return r.id!==ev.old.id});
+          return prev;
+        });
+      })
+      .on("postgres_changes",{event:"*",schema:"public",table:"ubicaciones_furgones"},function(ev){
+        /* GPS actualizado — notificar al mapa directamente */
+        if((ev.eventType==="INSERT"||ev.eventType==="UPDATE")&&typeof window._gpsRT==="function"){
+          window._gpsRT(ev.new.furgon_id,ev.new.latitud,ev.new.longitud,ev.new.ultima_actualizacion);
+        }
+      })
+      .subscribe();
+
+    var poll=wSet(function(){if(live)rl();},10000);
+    function onVis(){if(live)rl();}
+    window._onVisibleCbs.push(onVis);
+
+    return function(){
+      live=false;wClr(poll);sb.removeChannel(ch);
+      window._onVisibleCbs=window._onVisibleCbs.filter(function(f){return f!==onVis;});
+    };
+  },[]);
+
+  return{sc:sc,sts:sts,ds:ds,nf:nf,sa:sa,py:py,ld:ld,er:er,rl:rl};
+}
+
+/* ═══════════════════════════════════════════════
+   🗺️ MAPA GPS — v5 CORRECTO
+   
+   FIXES DEFINITIVOS:
+   ✅ Ticker muestra "Hace Xs" DECREMENTANDO desde ahora
+      Cuando llega nueva señal → resetea a "Hace 0s"
+   ✅ Refresh usa ref → nunca closure stale
+   ✅ RT detecta STOP: si pasan >20s sin señal → "Pausado"
+   ✅ Realtime vía useData._gpsRT callback
+   ✅ "lastSeen" es el timestamp de la BD, NO Date.now()
+   
+   LÓGICA DEL TIMER:
+   - lastGpsTs = timestamp de cuando el furgón envió GPS
+   - ticker calcula s = (Date.now() - lastGpsTs) / 1000
+   - Si s es pequeño (0-5s) → furgón activo en vivo
+   - Si s crece sin reset → furgón dejó de transmitir
+   - El texto "Hace Xs" sube: así el apoderado sabe
+     que hace X segundos fue la última señal
+   - Cuando llega nueva señal, s vuelve a 0
+   ═══════════════════════════════════════════════ */
+var _pMap=null,_pMarker=null;
+
+function ParentMap(p){
+  var st=p.st;
+  var van=st&&st.van_a?"A":st&&st.van_b?"B":null;
+
+  var _status=us("cargando"),status=_status[0],sStat=_status[1];
+  var _segs=us(null),segs=_segs[0],sSegs=_segs[1];
+  var _hora=us(null),hora=_hora[0],sHora=_hora[1]; /* hora de última señal */
+
+  /* refs — sin closure stale */
+  var tsRef=ur(null);       /* timestamp ms de la última señal GPS */
+  var mapRef=ur(null);
+  var markRef=ur(null);
+  var carRef=ur(null);      /* función cargarPosicion, siempre actualizada */
+  var vanRef=ur(van);
+  vanRef.current=van;
+
+  function mkIcon(v){
+    var c=v==="A"?"#f5c518":"#3b82f6";
+    return L.divIcon({
+      html:'<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56">'
+        +'<circle cx="28" cy="28" r="26" fill="'+c+'" stroke="#0a1628" stroke-width="3.5"/>'
+        +'<text x="28" y="23" font-size="18" fill="#0a1628" text-anchor="middle">🚐</text>'
+        +'<text x="28" y="42" font-size="16" font-weight="900" fill="#0a1628" text-anchor="middle">'+v+'</text>'
+        +'</svg>',
+      className:"",iconSize:[56,56],iconAnchor:[28,28]
+    });
+  }
+
+  function moverMarcador(lat,lng){
+    var m=mapRef.current;if(!m)return;
+    if(markRef.current)markRef.current.setLatLng([lat,lng]);
+    else markRef.current=L.marker([lat,lng],{icon:mkIcon(vanRef.current||"A")}).addTo(m);
+    m.setView([lat,lng],16,{animate:true,duration:0.6});
+  }
+
+  /* Procesar datos de GPS (desde BD o RT) */
+  function procesarGPS(lat,lng,ultimaAct){
+    var ts=new Date(ultimaAct).getTime();
+    tsRef.current=ts;
+    var hace=Date.now()-ts;
+    moverMarcador(lat,lng);
+    sHora(new Date(ts).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit",second:"2-digit"}));
+    if(hace<180000)sStat("activo");
+    else if(hace<600000)sStat("reciente");
+    else sStat("esperando");
+  }
+
+  /* Consultar BD */
+  function cargarPosicion(){
+    var v=vanRef.current;if(!v)return;
+    sb.from("ubicaciones_furgones").select("*").eq("furgon_id",v).limit(1)
+      .then(function(r){
+        if(r.error||!r.data||r.data.length===0){sStat("sindata");return;}
+        procesarGPS(r.data[0].latitud,r.data[0].longitud,r.data[0].ultima_actualizacion);
+      }).catch(function(){sStat("sindata");});
+  }
+  /* Actualizar ref SIEMPRE para evitar closure stale en botón */
+  carRef.current=cargarPosicion;
+
+  /* ── TICKER ── */
+  /* Recalcula segundos cada 1s. s = tiempo desde última señal.
+     Cuando llega nueva señal vía RT o polling, tsRef.current se actualiza
+     y s vuelve a 0. El texto "Hace Xs" es CORRECTO:
+     le dice al apoderado hace cuánto fue la última señal GPS. */
+  ue(function(){
+    var iv=setInterval(function(){
+      var ts=tsRef.current;
+      if(ts===null){sSegs(null);return;}
+      var s=Math.round((Date.now()-ts)/1000);
+      sSegs(s);
+      /* Degradar estado si silencio prolongado */
+      sStat(function(prev){
+        if(prev==="activo"&&s>25)return"reciente";
+        if(s>600)return"esperando";
+        return prev;
+      });
+    },1000);
+    return function(){clearInterval(iv);};
+  },[]);
+
+  /* ── Inicializar mapa ── */
+  ue(function(){
+    if(!van)return;
+
+    /* Recibir actualizaciones de GPS por Realtime (desde useData) */
+    window._gpsRT=function(furgon,lat,lng,ultimaAct){
+      if(furgon!==vanRef.current)return;
+      procesarGPS(lat,lng,ultimaAct||new Date().toISOString());
+    };
+
+    setTimeout(function(){
+      var el=document.getElementById("pmap-el");if(!el)return;
+      if(mapRef.current){mapRef.current.invalidateSize();cargarPosicion();return;}
+      var m=L.map("pmap-el",{zoomControl:true,attributionControl:false,
+        dragging:true,touchZoom:true,scrollWheelZoom:false})
+        .setView([-33.4489,-70.6693],13);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:19}).addTo(m);
+      mapRef.current=m;
+      setTimeout(function(){m.invalidateSize();cargarPosicion();},600);
+    },200);
+
+    /* Polling 5s */
+    var poll=wSet(function(){carRef.current&&carRef.current();},5000);
+    function onVis(){carRef.current&&carRef.current();}
+    window._onVisibleCbs.push(onVis);
+
+    return function(){
+      window._gpsRT=null;
+      wClr(poll);
+      window._onVisibleCbs=window._onVisibleCbs.filter(function(f){return f!==onVis;});
+      if(mapRef.current){mapRef.current.remove();mapRef.current=null;markRef.current=null;}
+    };
+  },[van]);
+
+  if(!van)return null;
+
+  var vanClr=van==="A"?"var(--yw)":"var(--bl)";
+  var stClr={activo:"var(--gn)",reciente:vanClr,esperando:"var(--gy)",sindata:"var(--gy)",cargando:"var(--gy)"}[status]||"var(--gy)";
+
+  /* Texto del timer — explica cuándo fue la última señal */
+  var timerTxt=(function(){
+    if(status==="cargando"||segs===null)return"📡 Conectando al GPS...";
+    if(status==="esperando")return"⏳ Furgón sin ruta activa";
+    if(status==="sindata")return"📡 Sin datos GPS aún";
+    if(segs<5)return"🟢 GPS en vivo — "+segs+"s";
+    if(segs<60)return"Última señal hace "+segs+" segundos";
+    var m=Math.floor(segs/60),s=segs%60;
+    if(m<10)return"Última señal hace "+m+"m "+s+"s"+(status==="reciente"?" · Furgón detenido":"");
+    return"Sin señal hace "+m+" min";
+  })();
+
+  var pillTxt={activo:"🟢 En movimiento",reciente:"🟡 Detenido / Pausado",esperando:"⏳ Sin ruta activa",sindata:"📡 Sin señal GPS",cargando:"📡 Conectando..."}[status]||"📡";
+
+  return h("div",{style:{marginBottom:14}},
+    h("div",{className:"lbl",style:{marginBottom:6}},"📍 UBICACIÓN FURGÓN "+van),
+    h("div",{style:{borderRadius:14,overflow:"hidden",border:"2px solid "+stClr,position:"relative"}},
+      h("div",{id:"pmap-el",style:{width:"100%",height:230}}),
+      h("div",{style:{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",zIndex:1000,pointerEvents:"none"}},
+        h("div",{className:"gps-pill "+(status==="activo"?"active":status==="reciente"?"recent":"")},
+          status==="activo"&&h("span",{className:"dot-live"}),
+          pillTxt))),
+    h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",
+        background:"var(--cd)",border:"1px solid var(--bd)",borderTop:"none",borderRadius:"0 0 14px 14px"}},
+      h("div",{style:{flex:1}},
+        h("div",{style:{fontSize:12,fontWeight:700,color:stClr}},timerTxt),
+        hora&&status!=="esperando"&&status!=="sindata"&&
+          h("div",{style:{fontSize:10,color:"var(--gy)",marginTop:2}},"Señal recibida a las "+hora)),
+      h("button",{
+        /* CLAVE: carRef.current — nunca closure stale */
+        onClick:function(e){e.stopPropagation();if(carRef.current)carRef.current();},
+        style:{flexShrink:0,background:stClr,color:"var(--ny)",border:"none",
+          borderRadius:10,padding:"10px 18px",fontSize:13,fontWeight:800,
+          cursor:"pointer",minHeight:42,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}},
+        "🔄 Actualizar")));
+}
+
+/* ═══════════════════════════════════════════════
+   👨‍👩‍👧 PORTAL DEL APODERADO
+   ═══════════════════════════════════════════════ */
+function PView(p){
+  var D=p.D,st=p.st,F=p.F,T=p.T,onLogout=p.onLogout;
+  var _ad=us(""),ad=_ad[0],sAd=_ad[1];
+  var _al=us(null),PAL=_al[0],sPAL=_al[1];
+  var lastNfRef=ur(null);
+
+  /* Pedir permiso al abrir */
+  ue(function(){
+    _pedirPermisoNotif();
+    /* Intentar desbloquear audio al primer render */
+    setTimeout(function(){_desbloquearAudio();},500);
+  },[]);
+
+  /* Polling de notificaciones + handler RT */
+  ue(function(){
+    if(!st)return;
+
+    /* Registrar handler global — lo llama useData cuando llega INSERT en notifications */
+    window._showAlert=function(nf){
+      if(nf.from_role!=="driver"||nf.student_id!==st.id)return;
+      playHorn(nf.ntype);
+      sPAL(nf);
+      var txt=_notifTexto(nf);
+      _mostrarNotifNativa(txt.t,txt.b,window.location.href);
+    };
+
+    /* Inicializar con notificación más reciente */
+    var mis=D.nf.filter(function(n){return n.student_id===st.id&&n.from_role==="driver";});
+    if(mis.length>0)lastNfRef.current=mis[0].id;
+
+    /* Polling 3s como backup del Realtime */
+    function checkNf(){
+      sb.from("notifications").select("*")
+        .eq("student_id",st.id).eq("from_role","driver")
+        .order("created_at",{ascending:false}).limit(1)
+        .then(function(r){
+          if(!r.data||r.data.length===0)return;
+          var n=r.data[0];
+          if(lastNfRef.current&&n.id!==lastNfRef.current){
+            playHorn(n.ntype);sPAL(n);
+            var txt=_notifTexto(n);
+            _mostrarNotifNativa(txt.t,txt.b,window.location.href);
+          }
+          lastNfRef.current=n.id;
+        });
+    }
+    var poll=wSet(checkNf,3000);
+    function onVis(){checkNf();D.rl();}
+    window._onVisibleCbs.push(onVis);
+    return function(){
+      window._showAlert=null;wClr(poll);
+      window._onVisibleCbs=window._onVisibleCbs.filter(function(f){return f!==onVis;});
+    };
+  },[st&&st.id]);
+
+  /* Pantalla inválida */
+  if(!st)return h("div",{style:{display:"flex",flexDirection:"column",height:"100dvh",background:"var(--ny)"}},
+    h(AudioBanner),
+    h("div",{style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32,textAlign:"center",gap:16}},
+      h("div",{style:{fontSize:72}},"🔒"),
+      h("h1",{style:{fontSize:20,fontWeight:800,color:"var(--yw)"}},"Código no válido"),
+      h("p",{style:{color:"var(--gy)",fontSize:14,lineHeight:1.6,maxWidth:280}},"Pide al transportista que te envíe el link correcto para acceder a tu portal.")));
+
+  var sc=D.sc.find(function(x){return x.id===st.school_id;});
+  var yr=new Date().getFullYear();
+  var hoy=D.ds.filter(function(d){return d.student_id===st.id;});
+  var isAb=hoy.some(function(d){return d.route_type==="ida"&&d.status==="absent";});
+  var isDl=hoy.some(function(d){return d.status==="delivered";});
+  var miNf=D.nf.filter(function(n){return n.student_id===st.id&&n.from_role==="driver";}).slice(0,12);
+  var miAbs=D.sa.filter(function(x){return x.student_id===st.id;});
+  var miPy=D.py.filter(function(x){return x.student_id===st.id;});
+  var si=isAb?{l:"Ausente hoy",c:"var(--rd)",ic:"calx"}
+    :isDl?{l:"Entregado en "+(sc?sc.name:"colegio"),c:"var(--gn)",ic:"check"}
+    :{l:"En ruta / Esperando",c:"var(--yw)",ic:"truck"};
+
+  async function tgAbs(){
+    playHorn(isAb?"cancelar_ausencia":"ausencia_hoy");
+    if(isAb){
+      var d=hoy.find(function(x){return x.route_type==="ida"&&x.status==="absent";});
+      if(d)await sb.from("daily_state").delete().eq("id",d.id);
+      await sb.from("notifications").insert({student_id:st.id,from_role:"parent",ntype:"cancelar_ausencia",message:st.name+" vuelve a asistir"});
+      F("Ausencia cancelada");
+    }else{
+      var rts=["ida","regreso","solo_regreso","tarde"];
+      for(var i=0;i<rts.length;i++){
+        var ex=hoy.find(function(x){return x.route_type===rts[i];});
+        if(ex)await sb.from("daily_state").update({status:"absent"}).eq("id",ex.id);
+        else await sb.from("daily_state").insert({student_id:st.id,route_date:td(),route_type:rts[i],status:"absent"});
+      }
+      await sb.from("notifications").insert({student_id:st.id,from_role:"parent",ntype:"ausencia_hoy",message:st.name+" no asiste hoy"});
+      F("Ausencia registrada");
+    }
+    D.rl();
+  }
+
+  async function schAb(){
+    if(!ad){F("Selecciona fecha","err");return;}
+    var r=await sb.from("scheduled_absences").insert({student_id:st.id,absence_date:ad});
+    if(r.error){F("Error o ya existe","err");return;}
+    await sb.from("notifications").insert({student_id:st.id,from_role:"parent",ntype:"ausencia_programada",message:st.name+" no asistirá el "+ad});
+    sAd("");D.rl();F("Ausencia programada ✓");
+  }
+
+  return h("div",{style:{display:"flex",flexDirection:"column",height:"100dvh",background:"var(--ny)"}},
+    h(AudioBanner),
+
+    /* Header */
+    h("header",{style:{display:"flex",alignItems:"center",gap:10,
+      padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",
+      background:"var(--n2)",flexShrink:0,borderBottom:"1px solid var(--bd)"}},
+      h("div",{style:{width:38,height:38,borderRadius:10,
+        background:"linear-gradient(135deg,var(--pp),#7c3aed)",
+        display:"flex",alignItems:"center",justifyContent:"center"}},
+        h(I,{name:"home",size:20,color:"#fff"})),
+      h("div",{style:{flex:1}},
+        h("div",{style:{fontSize:15,fontWeight:800}},"Portal Apoderado"),
+        h("div",{style:{fontSize:11,color:"var(--gy)"}},
+          new Date().toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long"}))),
+      h("button",{onClick:function(){_pedirPermisoNotif();_desbloquearAudio();playHorn("confirm");},
+        style:{padding:"8px 12px",borderRadius:10,border:"1px solid var(--bd)",
+          background:"var(--n3)",color:"var(--yw)",fontSize:11,fontWeight:700,
+          cursor:"pointer",display:"flex",alignItems:"center",gap:6}},
+        h(I,{name:"bell",size:14,color:"var(--yw)"}),"Alertas"),
+      onLogout&&h("button",{onClick:function(){if(confirm("¿Cambiar de usuario?"))onLogout();},
+        style:{padding:"8px 10px",borderRadius:10,border:"1px solid var(--bd)",
+          background:"none",color:"var(--gy)",fontSize:11,fontWeight:700,
+          cursor:"pointer"}},"Salir")),
+
+    /* Cuerpo scrolleable */
+    h("main",{className:"scr",style:{flex:1,minHeight:0,padding:12,
+      paddingBottom:"calc(32px + env(safe-area-inset-bottom,0px))"}},
+
+      /* Tarjeta alumno */
+      h("div",{style:{background:"linear-gradient(135deg,var(--n2),var(--n3))",
+        borderRadius:16,padding:16,border:"1px solid var(--bd)",marginBottom:12}},
+        h("div",{style:{display:"flex",alignItems:"center",gap:12,marginBottom:12}},
+          h("div",{style:{width:50,height:50,borderRadius:13,
+            background:"linear-gradient(135deg,var(--pp),#7c3aed)",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:22,fontWeight:800,color:"#fff"}},
+            st.name.charAt(0).toUpperCase()),
+          h("div",null,
+            h("div",{style:{fontSize:18,fontWeight:800}},st.name),
+            sc&&h("div",{style:{fontSize:12,color:"var(--gy)",marginTop:2}},sc.name),
+            st.guardian&&h("div",{style:{fontSize:11,color:"var(--gy)"}},st.guardian))),
+        h("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",
+          borderRadius:10,background:si.c+"18",border:"1px solid "+si.c+"35"}},
+          h(I,{name:si.ic,size:20,color:si.c}),
+          h("div",{style:{fontSize:14,fontWeight:700,color:si.c}},si.l))),
+
+      /* GPS */
+      h(ParentMap,{st:st}),
+
+      /* Avisos */
+      h("div",{className:"lbl",style:{marginBottom:8}},"🔔 AVISOS DEL TRANSPORTISTA"),
+      miNf.length===0
+        ?h("div",{style:{padding:16,borderRadius:12,background:"var(--cd)",
+            border:"1px solid var(--bd)",color:"var(--gy)",fontSize:13,marginBottom:12,lineHeight:1.5}},
+            "Sin avisos aún. Aquí aparecerán los mensajes del furgón con sonido y notificación.")
+        :h("div",{style:{marginBottom:12}},
+          miNf.map(function(n,idx){
+            var t=new Date(n.created_at).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"});
+            var ic={en_camino:"🚐",en_puerta:"🏠",entregado:"✅",pago_confirmado:"💰",ausencia_hoy:"📅"}[n.ntype]||"🔔";
+            var clr={en_camino:"var(--or)",en_puerta:"var(--gn)",entregado:"var(--gn)"}[n.ntype]||"var(--bl)";
+            return h("div",{key:n.id,className:"nf-item"+(idx===0?" new":""),
+              style:{borderColor:clr+(idx===0?"":"28")}},
+              h("div",{style:{fontSize:22,flexShrink:0}},ic),
+              h("div",{style:{flex:1}},
+                h("div",{style:{fontSize:13,fontWeight:idx===0?800:600,color:clr}},
+                  n.message||n.ntype),
+                h("div",{style:{fontSize:10,color:"var(--gy)",marginTop:3}},
+                  t+(idx===0?" · NUEVO 🔔":""))));
+          })),
+
+      /* Ausencia hoy */
+      h("div",{className:"lbl",style:{marginBottom:8}},"AUSENCIAS"),
+      h("button",{style:{width:"100%",padding:15,fontSize:15,marginBottom:10,
+        borderRadius:14,minHeight:52,fontWeight:800,cursor:"pointer",
+        display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+        background:isAb?"rgba(148,163,184,.06)":"rgba(239,68,68,.06)",
+        border:"2px solid "+(isAb?"var(--gy)":"var(--rd)"),
+        color:isAb?"var(--gy)":"var(--rd)"},onClick:tgAbs},
+        h(I,{name:"calx",size:20,color:isAb?"var(--gy)":"var(--rd)"}),
+        isAb?"Cancelar ausencia de hoy":"Registrar ausencia para hoy"),
+
+      /* Programar ausencia */
+      h("div",{style:{background:"var(--cd)",borderRadius:14,padding:12,
+        border:"1px solid var(--bd)",marginBottom:12}},
+        h("div",{style:{fontSize:13,fontWeight:700,marginBottom:8}},"📅 Programar ausencia futura"),
+        h("div",{style:{display:"flex",gap:8}},
+          h("input",{className:"i",type:"date",value:ad,min:td(),
+            onChange:function(e){sAd(e.target.value);},style:{flex:1,padding:10}}),
+          h("button",{className:"b by",style:{padding:"10px 16px",minHeight:44,flexShrink:0,fontSize:13},
+            onClick:schAb},"Agendar")),
+        miAbs.length>0&&h("div",{style:{marginTop:10}},
+          miAbs.sort(function(a,b){return a.absence_date.localeCompare(b.absence_date);})
+            .map(function(sa){
+              return h("div",{key:sa.id,style:{display:"flex",alignItems:"center",
+                  justifyContent:"space-between",padding:"8px 10px",borderRadius:8,
+                  background:"var(--n3)",marginTop:6,border:"1px solid var(--bd)"}},
+                h("span",{style:{fontSize:12,fontWeight:600}},
+                  new Date(sa.absence_date+"T12:00").toLocaleDateString("es-CL",{weekday:"short",day:"numeric",month:"short"})),
+                h("button",{style:{fontSize:11,color:"var(--rd)",background:"rgba(239,68,68,.08)",
+                    border:"1px solid rgba(239,68,68,.25)",borderRadius:8,padding:"6px 10px",
+                    fontWeight:700,cursor:"pointer"},
+                  onClick:function(){sb.from("scheduled_absences").delete().eq("id",sa.id).then(function(){D.rl();F("Cancelada");});}},
+                  "Cancelar"));
+            }))),
+
+      /* Pagos */
+      h("div",{className:"lbl",style:{marginBottom:8}},"💰 PAGOS "+yr),
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:24}},
+        QS.map(function(mon,ci){
+          var rm=ci+3,py=miPy.find(function(x){return x.month===rm;});
+          var st2=py?py.status:"pending";
+          var c={paid:"var(--gn)",partial:"var(--or)",pending:"var(--gy)"}[st2]||"var(--gy)";
+          return h("div",{key:ci,style:{display:"flex",alignItems:"center",
+              justifyContent:"space-between",padding:"8px 10px",borderRadius:8,
+              background:c+"12",border:"1px solid "+c+"28"}},
+            h("span",{style:{fontSize:12,fontWeight:700,color:c}},mon),
+            h("span",{style:{fontSize:10,fontWeight:700,color:c}},
+              st2==="paid"?"✓ Pagado":st2==="partial"?"½ Parcial":"Pendiente"));
+        }))
+    ),
+
+    /* Toast */
+    h("div",{className:"toast "+(T.s?"sh":"hd"),
+      style:{background:T.t==="err"?"var(--rd)":"var(--gn)"}},T.m),
+
+    /* Alert popup */
+    PAL&&h(Modal,null,h(AlertPopup,{alert:PAL,onClose:function(){sPAL(null);}})));
+}
+
+/* ═══════════════════════════════════════════════
+   🚀 ROOT APP
+   ═══════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════
+   🔑 PANTALLA DE INGRESO DE CÓDIGO
+   Se muestra cuando no hay código en URL ni localStorage
+   El tap del botón desbloquea audio automáticamente
+   ══════════════════════════════════════════════ */
+function CodeEntryScreen(p){
+  var onOk=p.onOk;
+  var _cod=us(""),cod=_cod[0],sCod=_cod[1];
+  var _err=us(""),err=_err[0],sErr=_err[1];
+  var _ld=us(false),ld=_ld[0],sLd=_ld[1];
+
+  function chk(){
+    var c=cod.trim().toUpperCase();
+    if(!c){sErr("Ingresa tu código de acceso");return;}
+    sLd(true);sErr("");
+    _desbloquearAudio();_pedirPermisoNotif();
+    sb.from("students").select("id,name,access_code").eq("access_code",c).maybeSingle()
+      .then(function(r){
+        sLd(false);
+        if(!r||!r.data){sErr("Código incorrecto. Verifica con el transportista.");return;}
+        try{localStorage.setItem("ruta_pc",r.data.access_code)}catch(e){}
+        onOk(r.data.access_code);
+      }).catch(function(){sLd(false);sErr("Error de conexión. Intenta de nuevo.");});
+  }
+
+  return h("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",
+    justifyContent:"center",height:"100dvh",background:"var(--ny)",padding:"32px 24px",
+    paddingTop:"calc(48px + env(safe-area-inset-top,0px))"}},
+    h("div",{style:{width:72,height:72,borderRadius:20,
+      background:"linear-gradient(135deg,var(--pp),#7c3aed)",
+      display:"flex",alignItems:"center",justifyContent:"center",
+      marginBottom:20,boxShadow:"0 10px 40px rgba(168,85,247,.35)"}},
+      h(I,{name:"home",size:36,color:"#fff"})),
+    h("div",{style:{fontSize:24,fontWeight:900,color:"var(--lt)",marginBottom:4}},"MI FURGÓN"),
+    h("div",{style:{fontSize:13,color:"var(--gy)",marginBottom:40,textAlign:"center"}},
+      "Portal Apoderado · RutaEscolar"),
+    h("div",{style:{width:"100%",maxWidth:310}},
+      h("div",{style:{background:"rgba(168,85,247,.1)",border:"1.5px solid rgba(168,85,247,.3)",
+        borderRadius:14,padding:"14px 16px",marginBottom:20,textAlign:"center"}},
+        h("div",{style:{fontSize:13,fontWeight:700,color:"var(--pp)",marginBottom:4}},
+          "🔑 Código de Acceso"),
+        h("div",{style:{fontSize:11,color:"var(--gy)",lineHeight:1.5}},
+          "Ingresa el código que te entregó el transportista")),
+      h("input",{className:"i",type:"text",placeholder:"Ej: ABC123",
+        value:cod,onChange:function(e){sCod(e.target.value.toUpperCase());sErr("");},
+        onKeyDown:function(e){if(e.key==="Enter")chk();},
+        autoCapitalize:"characters",autoCorrect:"off",spellCheck:false,
+        style:{textAlign:"center",fontSize:24,fontWeight:800,letterSpacing:5,marginBottom:12}}),
+      err&&h("div",{style:{color:"var(--rd)",fontSize:12,textAlign:"center",
+        marginBottom:12,background:"rgba(239,68,68,.08)",borderRadius:8,padding:"10px 14px"}},err),
+      h("button",{className:"b by",onClick:chk,disabled:ld,
+        style:{width:"100%",padding:"17px",fontSize:16,minHeight:56,borderRadius:14,
+          opacity:ld?0.7:1}},
+        ld?"Verificando...":"✓ Ingresar al Portal")));
+}
+
+function App(){
+  var D=useData();
+  var _T=us({m:"",t:"ok",s:false}),T=_T[0],sT=_T[1];
+  function F(m,t){sT({m:m,t:t||"ok",s:true});setTimeout(function(){sT(function(x){return{m:x.m,t:x.t,s:false};});},3000);}
+
+  /* Código dinámico (puede cambiar al entrar desde CodeEntryScreen) */
+  var _dynPC=us(PC),dynPC=_dynPC[0],sDynPC=_dynPC[1];
+
+  if(D.ld)return h("div",{style:{display:"flex",height:"100dvh",flexDirection:"column",
+    alignItems:"center",justifyContent:"center",gap:16,background:"var(--ny)"}},
+    h("div",{style:{width:56,height:56,borderRadius:16,
+      background:"linear-gradient(135deg,var(--pp),#7c3aed)",
+      display:"flex",alignItems:"center",justifyContent:"center"}},
+      h(I,{name:"home",size:28,color:"#fff"})),
+    h("div",{style:{color:"var(--yw)",fontSize:18,fontWeight:800}},"PORTAL APODERADO"),
+    h("div",{style:{color:"var(--gy)",fontSize:13}},"Conectando..."),
+    h("div",{style:{width:40,height:4,borderRadius:2,background:"var(--n3)",overflow:"hidden",marginTop:8}},
+      h("div",{style:{height:"100%",width:"40%",background:"var(--pp)",
+        animation:"load 1.2s ease infinite",borderRadius:2}})));
+
+  if(D.er)return h("div",{style:{display:"flex",height:"100dvh",flexDirection:"column",
+    alignItems:"center",justifyContent:"center",gap:12,padding:24,textAlign:"center"}},
+    h("div",{style:{fontSize:52}},"⚠️"),
+    h("div",{style:{color:"var(--rd)",fontSize:15,fontWeight:700}},"Error de conexión"),
+    h("div",{style:{color:"var(--gy)",fontSize:13,maxWidth:280,lineHeight:1.6}},D.er),
+    h("button",{className:"b by",style:{padding:"13px 28px",marginTop:12,fontSize:14},
+      onClick:function(){window.location.reload()}},"Reintentar"));
+
+  /* Sin código → pantalla de ingreso */
+  if(!dynPC){
+    return h(CodeEntryScreen,{onOk:function(code){sDynPC(code);}});
+  }
+
+  var st=D.sts.find(function(s){return s.access_code===dynPC;})||null;
+
+  /* Código no encontrado en BD → pedir de nuevo */
+  if(!st&&D.sts.length>0){
+    return h(CodeEntryScreen,{onOk:function(code){sDynPC(code);}});
+  }
+
+  return h(PView,{D:D,st:st,F:F,T:T,onLogout:function(){
+    try{localStorage.removeItem("ruta_pc")}catch(e){}
+    sDynPC(null);
+  }});
+}
+
+ReactDOM.render(h(App),document.getElementById("root"));
+
+/* ═══════════════════════════════════════════════
+   🔔 SERVICE WORKER — notificaciones nativas
+   Usa sw.js externo (requerido por iOS PWA)
+   ═══════════════════════════════════════════════ */
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("/sw.js",{scope:"/"})
+    .then(function(reg){
+      window._swReg=reg;
+      /* Escuchar cuando SW se activa */
+      function onSWReady(sw){
+        if(!sw)return;
+        if(sw.state==="activated"){window._swActive=sw;return;}
+        sw.addEventListener("statechange",function(){
+          if(sw.state==="activated")window._swActive=sw;
+        });
+      }
+      onSWReady(reg.active||reg.installing||reg.waiting);
+      reg.addEventListener("updatefound",function(){onSWReady(reg.installing);});
+      /* Mensaje del SW a la app */
+      navigator.serviceWorker.addEventListener("message",function(e){
+        if(e.data&&e.data.type==="NOTIFICATION_CLICK"){
+          if(typeof window._onVisible==="function")window._onVisible();
+        }
+      });
+    })
+    .catch(function(err){console.warn("SW no disponible:",err);});
+}
+</script>
+<style>
+@keyframes load{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
+</style>
+</body></html>
