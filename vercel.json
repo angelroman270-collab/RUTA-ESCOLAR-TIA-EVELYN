@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "buildCommand": "",
+  "installCommand": "",
+  "outputDirectory": ".",
+  "routes": [
+    { "src": "/sw.js", "dest": "/sw.js", "headers": { "Cache-Control": "no-cache", "Service-Worker-Allowed": "/" } },
+    { "src": "/manifest.json", "dest": "/manifest.json" },
+    { "src": "/manifest-portal.json", "dest": "/manifest-portal.json" },
+    { "src": "/icon-192.jpg", "dest": "/icon-192.jpg" },
+    { "src": "/icon-512.jpg", "dest": "/icon-512.jpg" },
+    { "src": "/portal.html", "dest": "/portal.html" },
+    { "src": "/portal", "dest": "/portal.html" },
+    { "src": "/index.html", "dest": "/index.html" },
+    { "src": "/(.*\\.js)", "dest": "/$1" },
+    { "src": "/(.*\\.css)", "dest": "/$1" },
+    { "src": "/(.*\\.jpg)", "dest": "/$1" },
+    { "src": "/(.*\\.png)", "dest": "/$1" },
+    { "src": "/", "dest": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
+  ]
+}
